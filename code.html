@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Twitter Sentiment Analyzer</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/universal-sentence-encoder@1.3.3"></script>
+    <style>
+        :root {
+            --primary: #1DA1F2;
+            --positive: #4CAF50;
+            --negative: #F44336;
+            --neutral: #FFC107;
+            --dark: #15202B;
+            --light: #F5F8FA;
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+        
+        body {
+            background-color: var(--light);
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        h1 {
+            color: var(--primary);
+            margin-bottom: 0.5rem;
+        }
+        
+        .subtitle {
+            color: #657786;
+            font-weight: normal;
+        }
+        
+        .analyzer-container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .input-group {
+            margin-bottom: 1.5rem;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: #14171A;
+        }
+        
+        textarea {
+            width: 100%;
+            padding: 1rem;
+            border: 1px solid #E1E8ED;
+            border-radius: 8px;
+            resize: vertical;
+            min-height: 120px;
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+        
+        textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            display: block;
+            margin: 0 auto;
+        }
+        
+        button:hover {
+            background-color: #1991DA;
+        }
+        
+        button:disabled {
+            background-color: #AAB8C2;
+            cursor: not-allowed;
+        }
+        
+        .result-container {
+            margin-top: 2rem;
+            display: none;
+        }
+        
+        .result-card {
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .positive {
+            background-color: rgba(76, 175, 80, 0.1);
+            border-left: 4px solid var(--positive);
+        }
+        
+        .negative {
+            background-color: rgba(244, 67, 54, 0.1);
+            border-left: 4px solid var(--negative);
+        }
+        
+        .neutral {
+            background-color: rgba(255, 193, 7, 0.1);
+            border-left: 4px solid var(--neutral);
+        }
+        
+        .sentiment-label {
+            font-weight: bold;
+            text-transform: capitalize;
+        }
+        
+        .positive .sentiment-label {
+            color: var(--positive);
+        }
+        
+        .negative .sentiment-label {
+            color: var(--negative);
+        }
+        
+        .neutral .sentiment-label {
+            color: var(--neutral);
+        }
+        
+        .confidence {
+            color: #657786;
+            font-size: 0.9rem;
+        }
+        
+        .loading {
+            text-align: center;
+            margin: 1rem 0;
+            display: none;
+        }
+        
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top: 4px solid var(--primary);
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .examples {
+            margin-top: 2rem;
+        }
+        
+        .examples h3 {
+            margin-bottom: 1rem;
+            color: #14171A;
+        }
+        
+        .example-tweets {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 1rem;
+        }
+        
+        .example-tweet {
+            background: white;
+            border-radius: 8px;
+            padding: 1rem;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            border: 1px solid #E1E8ED;
+        }
+        
+        .example-tweet:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        footer {
+            text-align: center;
+            margin-top: 2rem;
+            color: #657786;
+            font-size: 0.9rem;
+        }
+        
+        @media (max-width: 600px) {
+            .container {
+                padding: 1rem;
+            }
+            
+            .analyzer-container {
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Twitter Sentiment Analyzer</h1>
+            <p class="subtitle">Analyze the sentiment of tweets in real-time</p>
+        </header>
+        
+        <div class="analyzer-container">
+            <div class="input-group">
+                <label for="tweet-input">Enter a tweet to analyze:</label>
+                <textarea id="tweet-input" placeholder="Paste a tweet here..."></textarea>
+            </div>
+            
+            <button id="analyze-btn">Analyze Sentiment</button>
+            
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Analyzing sentiment...</p>
+            </div>
+            
+            <div class="result-container" id="result-container">
+                <h3>Analysis Result:</h3>
+                <div class="result-card" id="result-card">
+                    <div>
+                        <span class="sentiment-label" id="sentiment-label">Positive</span>
+                        <p class="confidence" id="confidence">Confidence: 85%</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="examples">
+            <h3>Try these example tweets:</h3>
+            <div class="example-tweets">
+                <div class="example-tweet" onclick="useExample('I love this product! It has changed my life for the better.')">
+                    "I love this product! It has changed my life for the better."
+                </div>
+                <div class="example-tweet" onclick="useExample('The service was terrible. I will never use this company again.')">
+                    "The service was terrible. I will never use this company again."
+                </div>
+                <div class="example-tweet" onclick="useExample('Just saw the new movie. It was okay, not great but not bad either.')">
+                    "Just saw the new movie. It was okay, not great but not bad either."
+                </div>
+                <div class="example-tweet" onclick="useExample('The weather today is absolutely perfect! ☀️')">
+                    "The weather today is absolutely perfect! ☀️"
+                </div>
+            </div>
+        </div>
+        
+        <footer>
+            <p>Note: This tool uses TensorFlow.js with a pre-trained model for sentiment analysis.</p>
+        </footer>
+    </div>
+
+    <script>
+        // Global variables
+        let model;
+        let isModelLoading = false;
+        
+        // DOM elements
+        const tweetInput = document.getElementById('tweet-input');
+        const analyzeBtn = document.getElementById('analyze-btn');
+        const loadingDiv = document.getElementById('loading');
+        const resultContainer = document.getElementById('result-container');
+        const resultCard = document.getElementById('result-card');
+        const sentimentLabel = document.getElementById('sentiment-label');
+        const confidenceText = document.getElementById('confidence');
+        
+        // Initialize the model
+        async function loadModel() {
+            isModelLoading = true;
+            analyzeBtn.disabled = true;
+            loadingDiv.style.display = 'block';
+            
+            try {
+                model = await tf.loadLayersModel('https://storage.googleapis.com/tfjs-models/tfjs/sentiment_cnn_v1/model.json');
+                isModelLoading = false;
+                analyzeBtn.disabled = false;
+                loadingDiv.style.display = 'none';
+                console.log('Model loaded successfully');
+            } catch (error) {
+                console.error('Error loading model:', error);
+                alert('Failed to load the sentiment analysis model. Please try again later.');
+                loadingDiv.style.display = 'none';
+                analyzeBtn.disabled = false;
+            }
+        }
+        
+        // Load the model when the page loads
+        document.addEventListener('DOMContentLoaded', loadModel);
+        
+        // Analyze sentiment when button is clicked
+        analyzeBtn.addEventListener('click', analyzeSentiment);
+        
+        // Function to analyze sentiment
+        async function analyzeSentiment() {
+            const text = tweetInput.value.trim();
+            
+            if (!text) {
+                alert('Please enter a tweet to analyze.');
+                return;
+            }
+            
+            if (isModelLoading || !model) {
+                alert('Model is still loading. Please wait...');
+                return;
+            }
+            
+            analyzeBtn.disabled = true;
+            loadingDiv.style.display = 'block';
+            resultContainer.style.display = 'none';
+            
+            try {
+                // Preprocess the text
+                const inputText = text.trim().toLowerCase().replace(/(\r\n|\n|\r)/gm, ' ');
+                
+                // Tokenize and pad the input
+                const inputTensor = await tokenizeAndPad(inputText);
+                
+                // Predict sentiment
+                const prediction = model.predict(inputTensor);
+                const score = prediction.dataSync()[0];
+                
+                // Determine sentiment
+                let sentiment;
+                let confidence;
+                
+                if (score > 0.66) {
+                    sentiment = 'positive';
+                    confidence = Math.round(score * 100);
+                } else if (score < 0.33) {
+                    sentiment = 'negative';
+                    confidence = Math.round((1 - score) * 100);
+                } else {
+                    sentiment = 'neutral';
+                    confidence = Math.round(Math.abs(score - 0.5) * 200);
+                }
+                
+                // Display results
+                resultCard.className = 'result-card ' + sentiment;
+                sentimentLabel.textContent = sentiment;
+                confidenceText.textContent = `Confidence: ${confidence}%`;
+                
+                resultContainer.style.display = 'block';
+            } catch (error) {
+                console.error('Error analyzing sentiment:', error);
+                alert('An error occurred while analyzing the sentiment. Please try again.');
+            } finally {
+                analyzeBtn.disabled = false;
+                loadingDiv.style.display = 'none';
+            }
+        }
+        
+        // Tokenize and pad the input text
+        async function tokenizeAndPad(text) {
+            // Load the vocabulary
+            const vocab = await fetch('https://storage.googleapis.com/tfjs-models/tfjs/sentiment_cnn_v1/vocab.json')
+                .then(response => response.json());
+            
+            // Tokenize the text
+            const words = text.split(' ').filter(word => word.length > 0);
+            const indices = words.map(word => {
+                if (vocab[word] !== undefined) {
+                    return vocab[word];
+                }
+                return 0; // OOV token
+            });
+            
+            // Pad the sequence
+            const paddedIndices = padSequences([indices], 100);
+            
+            // Convert to tensor
+            return tf.tensor2d(paddedIndices, [1, 100]);
+        }
+        
+        // Pad sequences to a fixed length
+        function padSequences(sequences, maxLen) {
+            return sequences.map(seq => {
+                if (seq.length > maxLen) {
+                    seq.splice(0, seq.length - maxLen);
+                } else if (seq.length < maxLen) {
+                    const pad = new Array(maxLen - seq.length).fill(0);
+                    seq = pad.concat(seq);
+                }
+                return seq;
+            });
+        }
+        
+        // Function to use example tweets
+        function useExample(text) {
+            tweetInput.value = text;
+        }
+    </script>
+</body>
+</html>
